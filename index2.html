@@ -1,0 +1,439 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Pahlawan Angkasa (Space Blaster)</title>
+    <!-- Menggunakan font Poppins untuk tampilan modern -->
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;700&display=swap" rel="stylesheet">
+    <style>
+        /* Gaya kustom untuk memastikan tampilan game terlihat bagus */
+        body {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+            margin: 0;
+            background-color: #1a1a2e; /* Latar belakang gelap seperti luar angkasa */
+            color: #ffffff;
+            font-family: 'Poppins', sans-serif;
+            overflow: hidden; /* Mencegah scroll */
+        }
+
+        h1 {
+            color: #ff9900;
+            margin-bottom: 10px;
+            font-size: 2.5rem;
+        }
+
+        #game-container {
+            position: relative;
+            box-shadow: 0 0 30px rgba(255, 153, 0, 0.5), 0 0 15px rgba(255, 255, 255, 0.2);
+            border-radius: 12px;
+            overflow: hidden;
+            border: 4px solid #ff9900;
+            margin-bottom: 20px;
+        }
+
+        canvas {
+            background-color: #000000;
+            display: block;
+        }
+
+        #score-display {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            padding: 5px 10px;
+            background-color: rgba(0, 0, 0, 0.7);
+            border-radius: 8px;
+            font-weight: bold;
+            color: #00ff00; /* Warna hijau neon untuk skor */
+            font-size: 1.2rem;
+        }
+        
+        #message-box {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background-color: rgba(0, 0, 0, 0.9);
+            border: 3px solid #ff9900;
+            border-radius: 10px;
+            padding: 20px 40px;
+            text-align: center;
+            box-shadow: 0 0 20px rgba(255, 153, 0, 0.8);
+            z-index: 100;
+            display: none; /* Disembunyikan secara default */
+            max-width: 90%;
+        }
+
+        #message-box h2 {
+            color: #ff3333;
+            margin-top: 0;
+            font-size: 2rem;
+        }
+
+        #message-box p {
+            font-size: 1.1rem;
+            margin: 15px 0;
+        }
+
+        .btn-game {
+            background-color: #ff9900;
+            color: #1a1a2e;
+            border: none;
+            padding: 10px 20px;
+            margin-top: 10px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 1rem;
+            font-weight: bold;
+            transition: background-color 0.3s, transform 0.1s, box-shadow 0.3s;
+        }
+
+        .btn-game:hover {
+            background-color: #ffb84d;
+            box-shadow: 0 0 10px #ff9900;
+        }
+
+        .btn-game:active {
+            transform: scale(0.98);
+        }
+
+        /* Responsif untuk layar kecil */
+        @media (max-width: 600px) {
+            h1 {
+                font-size: 1.8rem;
+            }
+            #score-display {
+                font-size: 1rem;
+            }
+            #message-box {
+                padding: 15px 30px;
+            }
+            #message-box h2 {
+                font-size: 1.5rem;
+            }
+        }
+
+        /* Styling untuk instruksi */
+        .instructions {
+            margin-top: 10px;
+            font-size: 0.9rem;
+            text-align: center;
+            color: #ccc;
+        }
+
+    </style>
+</head>
+<body>
+
+    <h1>Pahlawan Angkasa</h1>
+    <p>Hancurkan Asteroid! Jangan sampai menabrak!</p>
+
+    <div id="game-container">
+        <canvas id="gameCanvas"></canvas>
+        <div id="score-display">Skor: 0</div>
+
+        <!-- Kotak Pesan Game Over -->
+        <div id="message-box">
+            <h2 id="message-title">Permainan Selesai!</h2>
+            <p>Skor Akhir Anda: <span id="final-score">0</span></p>
+            <button class="btn-game" onclick="startGame()">Mulai Lagi</button>
+        </div>
+    </div>
+    
+    <div class="instructions">
+        Kontrol: Gunakan tombol Panah Kiri/Kanan atau A/D untuk bergerak. Spasi untuk menembak.
+    </div>
+
+    <script>
+        // Inisialisasi variabel canvas
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        const scoreDisplay = document.getElementById('score-display');
+        const messageBox = document.getElementById('message-box');
+        const finalScore = document.getElementById('final-score');
+        
+        // Konstanta Game
+        const GAME_WIDTH = 500;
+        const GAME_HEIGHT = 600;
+        const PLAYER_SPEED = 5;
+        const BULLET_SPEED = 7;
+        const ASTEROID_SPEED = 2;
+        const ASTEROID_SPAWN_RATE = 120; // Frame rate untuk spawn asteroid (makin kecil makin cepat)
+
+        // Atur ukuran canvas
+        canvas.width = GAME_WIDTH;
+        canvas.height = GAME_HEIGHT;
+
+        // Status Game
+        let gameLoopId;
+        let isGameOver = false;
+        let score = 0;
+        let frameCount = 0;
+        let keys = {};
+
+        // === Objek Game ===
+
+        // 1. Pesawat Pemain
+        const player = {
+            x: GAME_WIDTH / 2 - 20, // Tengah
+            y: GAME_HEIGHT - 50,
+            width: 40,
+            height: 40,
+            color: '#00ccff', // Warna biru terang
+            draw() {
+                // Gambar badan pesawat (segitiga)
+                ctx.fillStyle = this.color;
+                ctx.beginPath();
+                ctx.moveTo(this.x + this.width / 2, this.y);
+                ctx.lineTo(this.x, this.y + this.height);
+                ctx.lineTo(this.x + this.width, this.y + this.height);
+                ctx.closePath();
+                ctx.fill();
+
+                // Gambar kokpit (lingkaran kecil)
+                ctx.fillStyle = '#ffffff';
+                ctx.beginPath();
+                ctx.arc(this.x + this.width / 2, this.y + this.height * 0.4, 5, 0, Math.PI * 2);
+                ctx.fill();
+            },
+            update() {
+                // Gerak ke Kiri
+                if ((keys['ArrowLeft'] || keys['a']) && this.x > 0) {
+                    this.x -= PLAYER_SPEED;
+                }
+                // Gerak ke Kanan
+                if ((keys['ArrowRight'] || keys['d']) && this.x < GAME_WIDTH - this.width) {
+                    this.x += PLAYER_SPEED;
+                }
+            }
+        };
+
+        // 2. Peluru
+        let bullets = [];
+        class Bullet {
+            constructor(x, y) {
+                this.x = x;
+                this.y = y;
+                this.width = 3;
+                this.height = 10;
+                this.color = '#ff007f'; // Warna merah muda
+            }
+            draw() {
+                ctx.fillStyle = this.color;
+                ctx.fillRect(this.x, this.y, this.width, this.height);
+            }
+            update() {
+                this.y -= BULLET_SPEED;
+            }
+        }
+
+        // 3. Asteroid (Musuh)
+        let asteroids = [];
+        class Asteroid {
+            constructor(x, y, radius) {
+                this.x = x;
+                this.y = y;
+                this.radius = radius;
+                this.color = '#8b4513'; // Warna coklat tanah
+            }
+            draw() {
+                // Gambar bentuk asteroid (poligon kasar)
+                ctx.fillStyle = this.color;
+                ctx.beginPath();
+                // Gambar poligon sederhana (bisa diganti dengan gambar untuk visual yang lebih baik)
+                ctx.moveTo(this.x + this.radius, this.y);
+                ctx.lineTo(this.x + this.radius * 0.7, this.y + this.radius * 0.7);
+                ctx.lineTo(this.x, this.y + this.radius);
+                ctx.lineTo(this.x - this.radius * 0.7, this.y + this.radius * 0.7);
+                ctx.lineTo(this.x - this.radius, this.y);
+                ctx.lineTo(this.x - this.radius * 0.7, this.y - this.radius * 0.7);
+                ctx.lineTo(this.x, this.y - this.radius);
+                ctx.lineTo(this.x + this.radius * 0.7, this.y - this.radius * 0.7);
+                ctx.closePath();
+                ctx.fill();
+
+                // Tambahkan detail kawah
+                ctx.fillStyle = '#654321';
+                ctx.beginPath();
+                ctx.arc(this.x + this.radius * 0.3, this.y - this.radius * 0.3, this.radius * 0.2, 0, Math.PI * 2);
+                ctx.fill();
+            }
+            update() {
+                // Gerak turun
+                this.y += ASTEROID_SPEED + (score / 500); // Kecepatan meningkat seiring skor
+            }
+        }
+
+        // === Logika Game ===
+
+        function spawnAsteroid() {
+            // Asteroid muncul di posisi X acak di bagian atas
+            const radius = 10 + Math.random() * 20; // Ukuran acak antara 10 dan 30
+            const x = Math.random() * (GAME_WIDTH - radius * 2) + radius;
+            const y = -radius; // Mulai di luar layar
+            asteroids.push(new Asteroid(x, y, radius));
+        }
+
+        function checkCollisions() {
+            // 1. Cek Peluru vs Asteroid
+            for (let i = bullets.length - 1; i >= 0; i--) {
+                for (let j = asteroids.length - 1; j >= 0; j--) {
+                    const bullet = bullets[i];
+                    const asteroid = asteroids[j];
+
+                    // Deteksi tabrakan (sederhana: kotak peluru vs lingkaran asteroid)
+                    const distX = Math.abs(bullet.x + bullet.width / 2 - asteroid.x);
+                    const distY = Math.abs(bullet.y + bullet.height / 2 - asteroid.y);
+                    
+                    if (distX < asteroid.radius && distY < asteroid.radius) {
+                        // Tabrakan! Asteroid hancur
+                        bullets.splice(i, 1);
+                        asteroids.splice(j, 1);
+                        score += 10;
+                        scoreDisplay.textContent = `Skor: ${score}`;
+                        break; // Lanjut ke peluru berikutnya
+                    }
+                }
+            }
+
+            // 2. Cek Pemain vs Asteroid
+            for (let i = asteroids.length - 1; i >= 0; i--) {
+                const asteroid = asteroids[i];
+                // Deteksi tabrakan Pemain (kotak) vs Asteroid (lingkaran)
+                const closestX = Math.max(player.x, Math.min(asteroid.x, player.x + player.width));
+                const closestY = Math.max(player.y, Math.min(asteroid.y, player.y + player.height));
+                
+                const dx = asteroid.x - closestX;
+                const dy = asteroid.y - closestY;
+                
+                // Jika jarak kuadrat lebih kecil dari radius kuadrat, maka terjadi tabrakan
+                if ((dx * dx + dy * dy) < (asteroid.radius * asteroid.radius)) {
+                    gameOver();
+                    return; // Hentikan pengecekan setelah Game Over
+                }
+            }
+        }
+
+        function clearCanvas() {
+            // Bersihkan seluruh canvas
+            ctx.fillStyle = '#000000';
+            ctx.fillRect(0, 0, GAME_WIDTH, GAME_HEIGHT);
+        }
+
+        function updateGame() {
+            if (isGameOver) return;
+
+            frameCount++;
+            clearCanvas();
+
+            // Spawn Asteroid baru
+            if (frameCount % ASTEROID_SPAWN_RATE === 0) {
+                spawnAsteroid();
+            }
+
+            // Update dan Gambar Pemain
+            player.update();
+            player.draw();
+
+            // Update, Gambar, dan Hapus Peluru yang Keluar
+            for (let i = bullets.length - 1; i >= 0; i--) {
+                bullets[i].update();
+                bullets[i].draw();
+                if (bullets[i].y < 0) {
+                    bullets.splice(i, 1);
+                }
+            }
+
+            // Update, Gambar, dan Hapus Asteroid yang Keluar
+            for (let i = asteroids.length - 1; i >= 0; i--) {
+                asteroids[i].update();
+                asteroids[i].draw();
+                if (asteroids[i].y > GAME_HEIGHT) {
+                    asteroids.splice(i, 1);
+                    // Hukuman skor karena membiarkan asteroid lolos
+                    score = Math.max(0, score - 5); 
+                    scoreDisplay.textContent = `Skor: ${score}`;
+                }
+            }
+
+            // Cek Tabrakan
+            checkCollisions();
+
+            // Loop game
+            gameLoopId = requestAnimationFrame(updateGame);
+        }
+
+        function gameOver() {
+            isGameOver = true;
+            cancelAnimationFrame(gameLoopId);
+            
+            // Tampilkan pesan Game Over
+            finalScore.textContent = score;
+            messageBox.style.display = 'block';
+        }
+
+        function startGame() {
+            // Reset status game
+            isGameOver = false;
+            score = 0;
+            frameCount = 0;
+            bullets = [];
+            asteroids = [];
+            keys = {};
+
+            scoreDisplay.textContent = `Skor: 0`;
+            messageBox.style.display = 'none';
+
+            // Mulai loop game
+            if (gameLoopId) {
+                cancelAnimationFrame(gameLoopId);
+            }
+            player.x = GAME_WIDTH / 2 - 20; // Reset posisi pemain
+            updateGame();
+        }
+
+
+        // === Event Listener untuk Kontrol ===
+        
+        // Catat tombol yang ditekan (Down)
+        window.addEventListener('keydown', (e) => {
+            keys[e.key.toLowerCase()] = true;
+            
+            // Mencegah scroll saat menekan spasi/panah
+            if ([' ', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.key)) {
+                e.preventDefault();
+            }
+
+            // Tembak hanya sekali per tombol tekan Spasi
+            if ((e.key === ' ' || e.key.toLowerCase() === 'z') && !isGameOver) {
+                // Ciptakan peluru di tengah atas pesawat
+                bullets.push(new Bullet(player.x + player.width / 2 - 1.5, player.y));
+            }
+        });
+
+        // Catat tombol yang dilepas (Up)
+        window.addEventListener('keyup', (e) => {
+            keys[e.key.toLowerCase()] = false;
+        });
+
+
+        // === Awal Game ===
+        
+        // Tampilkan layar awal saat pertama kali dimuat
+        document.getElementById('message-title').textContent = "Selamat Datang di Pahlawan Angkasa!";
+        document.getElementById('final-score').textContent = "Bersiaplah!";
+        document.querySelector('#message-box button').textContent = "Mulai Bermain";
+        messageBox.style.display = 'block';
+
+        window.onload = function () {
+            // Pastikan canvas dan variabel lain sudah terinisialisasi
+        };
+
+    </script>
+</body>
+</html>
